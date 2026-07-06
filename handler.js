@@ -115,9 +115,7 @@ async function handleMessage(from, body, to, messageSid) {
       lastMessage: cleanReply.slice(0, 120),
     }),
     sendMessage(to, from, cleanReply),
-    escalated
-      ? sendPush(`⚠️ ${customerName} needs you`, body)
-      : sendPush(`💬 ${customerName}`, body),
+    ...(escalated ? [sendPush(`⚠️ ${customerName} needs you`, body)] : []),
   ]);
 }
 
