@@ -27,6 +27,9 @@ function auth(req, res, next) {
   next();
 }
 
+// Liveness check for uptime monitoring — no auth, no side effects
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+
 // Inbox web app
 app.use('/inbox', express.static(path.join(__dirname, 'web')));
 
