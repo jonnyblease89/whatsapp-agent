@@ -14,6 +14,7 @@ async function getConversations() {
       status:        d.status        || 'bot',
       escalated:     d.escalated     || false,
       resolved:      d.resolved      || false,
+      unread:        d.unread        || false,
       lastMessage:   d.lastMessage   || '',
       lastMessageAt: d.lastMessageAt?.toDate?.() || null,
     };
@@ -73,6 +74,19 @@ async function setResolved(phone, resolved) {
   await db.collection(COLLECTION).doc(phone).set({ resolved }, { merge: true });
 }
 
+async function markRead(phone) {
+  await db.collection(COLLECTION).doc(phone).set({ unread: false }, { merge: true });
+}
+
+async function getGarageConfig() {
+  const doc = await db.collection('config').doc('garage').get();
+  return doc.exists ? doc.data() : {};
+}
+
+async function setGarageConfig(data) {
+  await db.collection('config').doc('garage').set(data, { merge: true });
+}
+
 async function clearHistory(phone) {
   await db.collection(COLLECTION).doc(phone).delete();
 }
@@ -91,4 +105,27 @@ async function claimMessage(sid) {
   }
 }
 
-module.exports = { getConversations, getConversation, getHistory, saveHistory, appendIanMessage, setStatus, getStatus, setResolved, clearHistory, claimMessage };
+// One doc per calendar month, keyed YYYY-MM, with a nested increment counter per model —
+// used to build the billing report without summing every individual API call.
+async function recordUsage(model, inputTokens, outputTokens, costUSD) {
+  const month = new Date().toISOString().slice(0, 7);
+  await db.collection('usage_monthly').doc(month).set({
+    models: {
+      [model]: {
+        inputTokens:  Firestore.FieldValue.increment(inputTokens),
+        outputTokens: Firestore.FieldValue.increment(outputTokens),
+        costUSD:      Firestore.FieldValue.increment(costUSD),
+        requestCount: Firestore.FieldValue.increment(1),
+      },
+    },
+    totalCostUSD: Firestore.FieldValue.increment(costUSD),
+    updatedAt: new Date(),
+  }, { merge: true });
+}
+
+async function getUsage(month) {
+  const doc = await db.collection('usage_monthly').doc(month).get();
+  return doc.exists ? doc.data() : null;
+}
+
+module.exports = { getConversations, getConversation, getHistory, saveHistory, appendIanMessage, setStatus, getStatus, setResolved, markRead, getGarageConfig, setGarageConfig, clearHistory, claimMessage, recordUsage, getUsage };

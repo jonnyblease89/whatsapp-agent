@@ -52,30 +52,59 @@ ${convSummaries}`;
   console.log(`Daily summary sent to ${twilioTo}`);
 }
 
+// Returns the UTC timestamp of midnight today in Europe/London time (handles BST/GMT automatically)
+function ukMidnightToday() {
+  const nowUtc    = new Date();
+  const nowLondon = new Date(nowUtc.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+  const midnight  = new Date(nowLondon);
+  midnight.setHours(0, 0, 0, 0);
+  const utcOffset = nowUtc - nowLondon;
+  return new Date(midnight.getTime() + utcOffset);
+}
+
 async function getInboxSummary() {
   const all    = await getConversations();
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const recent = all.filter(c => !c.resolved && c.lastMessageAt && new Date(c.lastMessageAt) > cutoff);
+  const cutoff = ukMidnightToday(); // everything since midnight UK time today
 
-  if (!recent.length) return 'No recent conversations.';
+  // Include all conversations active today — resolved or not
+  const today = all.filter(c => c.lastMessageAt && new Date(c.lastMessageAt) >= cutoff);
 
-  const full = await Promise.all(recent.map(c => getConversation(c.phone)));
+  if (!today.length) return null; // nothing today yet
+
+  const full = await Promise.all(today.map(c => getConversation(c.phone)));
 
   const convSummaries = full.map(c => {
     const name = c.customerName || c.phone;
-    const msgs = (c.messages || []).slice(-6).map(m => {
+    const msgs = (c.messages || []).slice(-8).map(m => {
       const who = m.sender === 'customer' ? 'Customer' : m.sender === 'ian' ? 'Ian' : 'Bot';
       return `${who}: ${m.content}`;
     }).join('\n');
-    const status = c.escalated ? '[NEEDS IAN]' : c.status === 'human' ? '[IAN HANDLING]' : '[BOT]';
-    return `${status} ${name}\n${msgs}`;
+
+    let statusTag;
+    if (c.resolved)              statusTag = '[RESOLVED TODAY]';
+    else if (c.escalated)        statusTag = '[NEEDS IAN]';
+    else if (c.status === 'human') statusTag = '[IAN HANDLING]';
+    else                         statusTag = '[BOT]';
+
+    return `${statusTag} ${name}\n${msgs}`;
   }).join('\n\n');
 
-  const prompt = `Summarise these recent garage customer conversations for Ian in 3-5 bullet points. Focus only on what needs action: bookings to make, customers waiting for a reply, urgent issues. Be very brief — one line per item maximum.
+  const prompt = `Summarise today's customer conversations for Ian at CH Autoworks. Be very brief — one line per item max, bullet points only.
 
+Group into two sections:
+• **Needs attention** — customers waiting for a reply, unresolved bookings, escalated issues
+• **Dealt with today** — resolved conversations, completed bookings
+
+If a section is empty, omit it entirely.
+
+Conversations:
 ${convSummaries}`;
 
-  return await askClaude([{ role: 'user', content: prompt }], 'You are a brief assistant summarising garage customer messages for the owner.');
+  return await askClaude(
+    [{ role: 'user', content: prompt }],
+    'You are a brief assistant summarising garage customer messages for the owner.',
+    'claude-haiku-4-5-20251001',
+  );
 }
 
 module.exports = { sendDailySummary, getInboxSummary };

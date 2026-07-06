@@ -1,4 +1,4 @@
-const { getHistory, saveHistory, clearHistory, getStatus, claimMessage } = require('./store');
+const { getConversation, saveHistory, clearHistory, claimMessage, getGarageConfig } = require('./store');
 const { askClaude }      = require('./claude');
 const { sendMessage }    = require('./twilio');
 const { lookupCustomer } = require('./sheets');
@@ -6,6 +6,11 @@ const { sendPush }       = require('./push');
 
 const RESET_PHRASES = ['reset', 'start over', 'restart'];
 const MAX_HISTORY   = 200;
+
+// Inactivity thresholds for conversation state resets
+const HUMAN_GRACE_HOURS      = 8;   // keep bot silent for active human takeovers within this window
+const NEW_CONVERSATION_HOURS = 24;  // trim context sent to Claude after this gap
+const FRESH_START_HOURS      = 168; // 7 days — pass no history to Claude at all
 
 // Returns { open: bool, nextOpen: string } in Europe/London time
 function getBusinessHoursStatus() {
@@ -57,41 +62,68 @@ async function handleMessage(from, body, to, messageSid) {
     return;
   }
 
-  // If Ian has taken over, save the customer message so he sees it in the inbox but don't reply
-  const status = await getStatus(phone);
-  if (status === 'human') {
-    const history  = await getHistory(phone);
-    const messages = [...history, { role: 'user', content: body, sender: 'customer', ts: new Date().toISOString() }];
-    const trimmed  = messages.length > MAX_HISTORY ? messages.slice(-MAX_HISTORY) : messages;
-    await saveHistory(phone, trimmed, { lastMessage: body, twilioNumber: to });
+  // Single Firestore read for all conversation state + customer lookup + garage config in parallel
+  const [conv, customer, garageConfig] = await Promise.all([
+    getConversation(phone),
+    lookupCustomer(phone),
+    getGarageConfig(),
+  ]);
+
+  const awayUntil      = garageConfig?.awayUntil ? new Date(garageConfig.awayUntil) : null;
+  const isActivelyAway = awayUntil && awayUntil > new Date();
+
+  const history   = conv?.messages      || [];
+  const status    = conv?.status        || 'bot';
+  const lastMsgAt = conv?.lastMessageAt || null;
+
+  const hoursSinceLast = lastMsgAt
+    ? (Date.now() - lastMsgAt.getTime()) / (1000 * 60 * 60)
+    : Infinity;
+
+  // Ian is actively in this conversation — save the message for him to see, but stay silent
+  const isActiveHumanTakeover = status === 'human' && hoursSinceLast < HUMAN_GRACE_HOURS;
+  if (isActiveHumanTakeover) {
+    const saved = [...history, { role: 'user', content: body, sender: 'customer', ts: new Date().toISOString() }];
+    const trimmed = saved.length > MAX_HISTORY ? saved.slice(-MAX_HISTORY) : saved;
+    await saveHistory(phone, trimmed, { lastMessage: body, twilioNumber: to, unread: true });
     return;
   }
 
-  const [history, customer] = await Promise.all([
-    getHistory(phone),
-    lookupCustomer(phone),
-  ]);
+  // Limit history sent to Claude based on inactivity — full history is always preserved in Firestore
+  let contextHistory;
+  if (hoursSinceLast >= FRESH_START_HOURS) {
+    contextHistory = [];             // 7+ days: completely fresh context
+  } else if (hoursSinceLast >= NEW_CONVERSATION_HOURS) {
+    contextHistory = history.slice(-5);  // 24h–7d: light context only
+  } else {
+    contextHistory = history;        // active: full context
+  }
 
-  const messages     = [...history, { role: 'user', content: body, sender: 'customer', ts: new Date().toISOString() }];
+  const now          = new Date().toISOString();
+  const userMsg      = { role: 'user', content: body, sender: 'customer', ts: now };
   const customerName = customer ? `${customer.firstName} ${customer.lastName}`.trim() : phone;
+
+  // What Claude sees (windowed) vs what gets saved (always the full history)
+  const claudeMessages = [...contextHistory, userMsg];
 
   let reply;
   try {
     reply = await askClaude(
-      messages.map(m => ({ role: m.role, content: m.content })),
-      buildSystemPrompt(customer, getBusinessHoursStatus()),
+      claudeMessages.map(m => ({ role: m.role, content: m.content })),
+      buildSystemPrompt(customer, getBusinessHoursStatus(), isActivelyAway ? awayUntil : null),
     );
   } catch (err) {
     console.error('askClaude failed after retries:', err);
-    const fallback = "Sorry, I'm having a technical hiccup right now — I've flagged this for Ian and he'll get back to you personally as soon as he can.";
-    const updated  = [...messages, { role: 'assistant', content: fallback, sender: 'bot', ts: new Date().toISOString() }];
-    const trimmed  = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
-
+    const fallback    = "Sorry, I'm having a technical hiccup right now — I've flagged this for Ian and he'll get back to you personally as soon as he can.";
+    const fallbackMsg = { role: 'assistant', content: fallback, sender: 'bot', ts: new Date().toISOString() };
+    const updated     = [...history, userMsg, fallbackMsg];
+    const trimmed     = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
     await Promise.all([
       saveHistory(phone, trimmed, {
         customerName, phone, twilioNumber: to,
-        status: 'human', escalated: true,
+        status: 'human', resolved: false, escalated: true,
         lastMessage: fallback.slice(0, 120),
+        unread: true,
       }),
       sendMessage(to, from, fallback),
       sendPush(`⚠️ ${customerName} — bot error, needs you`, body),
@@ -102,24 +134,27 @@ async function handleMessage(from, body, to, messageSid) {
   const escalated  = reply.includes('[ESCALATE]');
   const cleanReply = reply.replace('[ESCALATE]', '').trim();
 
-  const updated = [...messages, { role: 'assistant', content: cleanReply, sender: 'bot', ts: new Date().toISOString() }];
-  const trimmed = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
+  const replyMsg = { role: 'assistant', content: cleanReply, sender: 'bot', ts: new Date().toISOString() };
+  const updated  = [...history, userMsg, replyMsg];
+  const trimmed  = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
 
   await Promise.all([
     saveHistory(phone, trimmed, {
       customerName,
       phone,
       twilioNumber: to,
-      status:      escalated ? 'human' : 'bot',
+      status:   escalated ? 'human' : 'bot',
+      resolved: false,  // auto-reopen any previously resolved conversation
       escalated,
       lastMessage: cleanReply.slice(0, 120),
+      unread: true,
     }),
     sendMessage(to, from, cleanReply),
     ...(escalated ? [sendPush(`⚠️ ${customerName} needs you`, body)] : []),
   ]);
 }
 
-function buildSystemPrompt(customer, { open, nextOpen }) {
+function buildSystemPrompt(customer, { open, nextOpen }, awayUntil = null) {
   const garagePhone = process.env.GARAGE_PHONE;
   const garageName  = process.env.GARAGE_NAME;
 
@@ -147,7 +182,9 @@ Guidelines:
 - Keep messages short and conversational — this is WhatsApp, not email
 - If a customer describes a fault, it's fine to offer one or two likely causes to show you understand, but don't turn it into a deep diagnostic back-and-forth — you're not there to fix the car over WhatsApp. Focus on understanding what the customer wants, then steer them towards action (booking in so Ian can take a proper look). The goal is to make the customer feel heard and get them booked in, not to solve the problem in the chat
 - When a customer wants to book in, do not confirm or offer specific slots — Ian manages the schedule himself. Instead, find out: what the vehicle needs, the registration, and when would generally suit them. Customers drop their car at the garage (Warren Rd, Cheadle SK8 5AA). Drop-off works best between 8am and 9am so Ian can get started first thing — customers leave it for the day and collect before 5pm. If 9:30am suits better to avoid rush-hour traffic that works too. There is a key drop box to the right of the garage gates if they arrive when it's not yet open. Let Ian know the preferred drop-off time when passing the booking over. The garage does not offer a collection or delivery service.
-- If a customer asks whether their car is safe to drive, give a practical honest answer rather than just deferring to Ian. For most suspension advisories or minor leaks: it's usually okay for a short while but should be sorted soon and they should avoid motorways / take it easy. For anything brake-related, a snapped spring, or a ball joint failure: be clear they should not drive it until it's been looked at and suggest getting it recovered if they're not nearby. Use common sense — err on the side of caution for anything that sounds potentially dangerous.
+- If a customer asks whether their car is safe to drive, give a practical honest answer rather than just deferring to Ian. For most suspension advisories or minor leaks: it's usually okay for a short while but should be sorted soon and they should avoid motorways / take it easy. For anything brake-related, a snapped spring, or a ball joint failure: be clear they should not drive it until it's been looked at. Use common sense — err on the side of caution for anything that sounds potentially dangerous.
+- Never tell a customer to bring their car down now, today, or first thing tomorrow. Same-day and next-morning drop-offs must be agreed with Ian directly — tell the customer to call Ian on ${garagePhone} to arrange it. Only the normal booking process (find out what's needed, registration, preferred week) applies through this chat.
+- If a customer needs their vehicle recovered, do not arrange or confirm this yourself. Tell them to call Ian on ${garagePhone} to discuss — recovery needs to be agreed with him directly.
 - Payment is usually by bank transfer. The garage also has a card machine if that's easier.
 - Do not ask customers to call or contact you — you are the contact point
 
@@ -161,6 +198,7 @@ Pricing — you can share these confidently when customers ask:
 - Brake fluid service: £80
 - Diagnostic scan: £60
 - For brake discs, pads, suspension parts, and other components: prices vary significantly by make and model. Premium and German brands (BMW, Audi, Mercedes, Porsche) in particular have expensive OEM parts. Do not guess a price for these — tell the customer Ian will look up parts costs and get back to them with a quote. Labour is at £72/hour regardless.
+- The garage does not fit customer-supplied parts. Ian sources all parts himself to ensure quality and to stand behind the work. If a customer asks about bringing their own parts, politely explain this policy and reassure them that Ian sources quality parts at competitive prices.
 
 MOT rules worth knowing (share these when relevant):
 - An MOT can be carried out at any time — the customer always gets a full 12 months from the test date
@@ -177,6 +215,17 @@ Garage details:
 - Address: Warren Rd, Cheadle Hulme, Cheadle SK8 5AA
 - Opening hours: Monday–Friday 8am–5pm. Closed Saturday and Sunday.
 - The garage is currently: ${open ? 'OPEN' : `CLOSED (reopens ${nextOpen})`}`;
+
+  if (awayUntil) {
+    const dateStr = awayUntil.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    prompt += `\n\nIMPORTANT — IAN IS CURRENTLY AWAY:
+- Ian is on holiday and will not be available until ${dateStr}
+- Do NOT accept, offer, or confirm any booking slots — you cannot commit to dates Ian hasn't agreed to
+- Do NOT use [ESCALATE] — Ian is not monitoring messages and cannot respond
+- Let customers know warmly that Ian is away until ${dateStr} and will be in touch when he's back
+- You can still answer general questions, give pricing, and note what the customer needs — just make clear no dates can be confirmed until Ian returns
+- If someone has an urgent safety issue (car unsafe to drive, breakdown), acknowledge the urgency, apologise, and suggest they search for a nearby garage or contact their breakdown provider (RAC/AA)`;
+  }
 
   if (customer) {
     const vehicleList = customer.vehicles.map((v, i) =>
@@ -197,4 +246,4 @@ IMPORTANT: The vehicle information above is background context only — do not u
   return prompt;
 }
 
-module.exports = { handleMessage };
+module.exports = { handleMessage, buildSystemPrompt, getBusinessHoursStatus };

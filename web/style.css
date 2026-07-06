@@ -216,6 +216,86 @@ header h1 { font-size: 17px; font-weight: 600; flex: 1; }
 
 .empty { text-align: center; color: var(--wa-muted); padding: 60px 20px; font-size: 14px; }
 
+/* ── Unread indicator ── */
+.conv-item.unread .conv-name    { font-weight: 700; color: var(--wa-dark); }
+.conv-item.unread .conv-preview { color: var(--wa-text); font-weight: 500; }
+.unread-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  background: var(--wa-green);
+  border-radius: 50%;
+  margin: 3px auto 0;
+}
+
+/* ── Away mode ── */
+.icon-btn.away-active { background: rgba(255,193,7,.25); }
+
+.away-banner {
+  background: #FFF3E0;
+  border-bottom: 1px solid #FFE0B2;
+  color: #E65100;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  gap: 10px;
+}
+.away-banner span { flex: 1; }
+.away-banner button {
+  background: none;
+  border: 1px solid #E65100;
+  color: #E65100;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.away-banner button:hover { background: rgba(230,81,0,.08); }
+
+.away-form {
+  background: #FFFDE7;
+  border-bottom: 1px solid #FFF9C4;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.away-form label { font-size: 13px; color: var(--wa-muted); flex-shrink: 0; }
+.away-form input[type="date"] {
+  flex: 1;
+  border: 1.5px solid var(--wa-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--wa-text);
+  outline: none;
+}
+.away-form input[type="date"]:focus { border-color: var(--wa-teal); }
+.away-form button {
+  background: var(--wa-teal);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.away-form button:hover { background: var(--wa-dark); }
+.away-dismiss {
+  background: none !important;
+  color: var(--wa-muted) !important;
+  padding: 4px 6px !important;
+  font-size: 16px !important;
+}
+.away-dismiss:hover { color: var(--wa-text) !important; background: none !important; }
+
 /* ── Summary card ── */
 #summary-card {
   background: white;

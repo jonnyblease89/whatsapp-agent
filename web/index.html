@@ -30,8 +30,21 @@
   <div id="list-screen" class="screen hidden">
     <header>
       <h1>CH Autoworks</h1>
+      <button id="away-btn" class="icon-btn" title="Set away mode">🌙</button>
       <button id="logout-btn" class="icon-btn" title="Sign out">⏻</button>
     </header>
+
+    <div id="away-banner" class="away-banner hidden">
+      <span id="away-text"></span>
+      <button id="away-cancel-btn">Cancel</button>
+    </div>
+
+    <div id="away-form" class="away-form hidden">
+      <label for="away-date-input">Back on:</label>
+      <input type="date" id="away-date-input">
+      <button id="away-confirm-btn">Set</button>
+      <button id="away-form-dismiss" class="away-dismiss">✕</button>
+    </div>
 
     <div id="summary-card">
       <div id="summary-text">Loading summary…</div>

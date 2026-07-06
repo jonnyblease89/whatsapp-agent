@@ -6,7 +6,7 @@ const path       = require('path');
 const { handleMessage }    = require('./handler');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
-const { getConversations, getConversation, setStatus, setResolved, appendIanMessage } = require('./store');
+const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig } = require('./store');
 const { sendMessage }                                         = require('./twilio');
 const { verifyTwilioSignature }                                = require('./security');
 const { isRateLimited }                                        = require('./rateLimit');
@@ -71,9 +71,13 @@ app.get('/conversations', auth, async (req, res) => {
   res.json(conversations);
 });
 
-// Inbox: single conversation
+// Inbox: single conversation — also marks it read
 app.get('/conversations/:phone', auth, async (req, res) => {
-  const conv = await getConversation(decodeURIComponent(req.params.phone));
+  const phone = decodeURIComponent(req.params.phone);
+  const [conv] = await Promise.all([
+    getConversation(phone),
+    markRead(phone),
+  ]);
   if (!conv) return res.status(404).json({ error: 'Not found' });
   res.json(conv);
 });
@@ -84,7 +88,9 @@ app.post('/reply', auth, async (req, res) => {
   if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
   const conv = await getConversation(phone);
   const twilioFrom = conv?.twilioNumber || `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
-  await sendMessage(twilioFrom, `whatsapp:${phone}`, message);
+  const isWhatsApp = twilioFrom.startsWith('whatsapp:');
+  const twilioTo   = isWhatsApp ? `whatsapp:${phone}` : phone;
+  await sendMessage(twilioFrom, twilioTo, message);
   await appendIanMessage(phone, message);
   res.json({ ok: true });
 });
@@ -135,6 +141,18 @@ app.post('/resolve', auth, async (req, res) => {
   const { phone, resolved } = req.body;
   if (!phone) return res.status(400).json({ error: 'phone required' });
   await setResolved(phone, !!resolved);
+  res.json({ ok: true });
+});
+
+// Garage config (away mode etc.)
+app.get('/garage-config', auth, async (req, res) => {
+  const config = await getGarageConfig();
+  res.json(config);
+});
+
+app.post('/away', auth, async (req, res) => {
+  const { awayUntil } = req.body; // ISO date string or null
+  await setGarageConfig({ awayUntil: awayUntil || null });
   res.json({ ok: true });
 });
 

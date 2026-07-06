@@ -3,9 +3,11 @@ const API = 'https://europe-west2-trans-invention-392414.cloudfunctions.net/what
 let token           = localStorage.getItem('inbox_token') || '';
 let currentPhone    = null;
 let pollTimer       = null;
+let summaryTimer    = null;
 let activeFilter    = 'open';
 let allConvs        = [];
 let initialChatLoad = false; // true only for the very first render of a chat
+let isAway          = false;
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 
@@ -42,7 +44,9 @@ document.getElementById('login-btn').addEventListener('click', async () => {
   renderList();
   show('list-screen');
   loadSummary();
+  loadGarageConfig();
   startListPoll();
+  startSummaryRefresh();
   setupPush();
 });
 
@@ -56,6 +60,7 @@ function logout() {
   localStorage.removeItem('inbox_token');
   token = '';
   stopPoll();
+  stopSummaryRefresh();
   show('login-screen');
 }
 
@@ -89,7 +94,7 @@ function renderList() {
     const name    = c.customerName || c.phone;
     const initial = name[0].toUpperCase();
     const time    = c.lastMessageAt ? timeAgo(new Date(c.lastMessageAt)) : '';
-    const cls     = c.resolved ? 'resolved' : c.escalated ? 'escalated' : '';
+    const cls     = (c.resolved ? 'resolved' : c.escalated ? 'escalated' : '') + (c.unread ? ' unread' : '');
     const badge   = c.resolved
       ? '<span class="badge resolved">Resolved</span>'
       : c.escalated
@@ -97,6 +102,7 @@ function renderList() {
         : c.status === 'human'
           ? '<span class="badge human">You</span>'
           : '<span class="badge bot">Bot</span>';
+    const dot = c.unread ? '<span class="unread-dot"></span>' : '';
 
     return `<div class="conv-item ${cls}" data-phone="${c.phone}">
       <div class="conv-avatar">${initial}</div>
@@ -106,6 +112,7 @@ function renderList() {
       </div>
       <div class="conv-meta">
         <div class="conv-time">${time}</div>
+        ${dot}
         ${badge}
       </div>
     </div>`;
@@ -125,15 +132,87 @@ function startListPoll() {
   }, 5000);
 }
 
+// Render the simple markdown Claude produces (bold, bullets, newlines)
+function renderMarkdown(md) {
+  return md
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // **bold**
+    .replace(/^[•·]\s+/gm, '&bull; ')                 // bullet chars
+    .replace(/\n/g, '<br>');
+}
+
 async function loadSummary() {
   const card = document.getElementById('summary-card');
   const text = document.getElementById('summary-text');
+
+  card.classList.remove('hidden');
+  text.innerHTML = '<span style="opacity:0.5">Loading today\'s summary…</span>';
+
   const data = await api('GET', '/inbox-summary');
   if (data?.summary) {
-    text.innerHTML = data.summary.replace(/\n/g, '<br>');
+    const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    text.innerHTML = `<strong>Today · ${today}</strong><br><br>${renderMarkdown(data.summary)}`;
   } else {
-    card.classList.add('hidden');
+    text.innerHTML = '<span style="opacity:0.5">No conversations today yet.</span>';
   }
+}
+
+// ── Away mode ─────────────────────────────────────────────────────────────────
+
+async function loadGarageConfig() {
+  const config = await api('GET', '/garage-config');
+  if (!config) return;
+  const awayUntil = config.awayUntil ? new Date(config.awayUntil) : null;
+  const activelyAway = awayUntil && awayUntil > new Date();
+  isAway = !!activelyAway;
+  document.getElementById('away-btn').classList.toggle('away-active', isAway);
+  if (isAway) {
+    const dateStr = awayUntil.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    document.getElementById('away-text').textContent = `Away mode — Ian back ${dateStr}. Bot won't take bookings.`;
+    document.getElementById('away-banner').classList.remove('hidden');
+  } else {
+    document.getElementById('away-banner').classList.add('hidden');
+  }
+}
+
+document.getElementById('away-btn').addEventListener('click', () => {
+  if (isAway) {
+    // toggle off
+    setAwayMode(null);
+  } else {
+    // show date picker
+    const form = document.getElementById('away-form');
+    const isVisible = !form.classList.contains('hidden');
+    form.classList.toggle('hidden', isVisible);
+    if (!isVisible) {
+      const today = new Date().toISOString().slice(0, 10);
+      const input = document.getElementById('away-date-input');
+      input.min   = today;
+      input.value = '';
+      input.focus();
+    }
+  }
+});
+
+document.getElementById('away-confirm-btn').addEventListener('click', async () => {
+  const val = document.getElementById('away-date-input').value;
+  if (!val) return;
+  document.getElementById('away-form').classList.add('hidden');
+  await setAwayMode(val);
+});
+
+document.getElementById('away-form-dismiss').addEventListener('click', () => {
+  document.getElementById('away-form').classList.add('hidden');
+});
+
+document.getElementById('away-cancel-btn').addEventListener('click', () => setAwayMode(null));
+
+document.getElementById('away-date-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('away-confirm-btn').click();
+});
+
+async function setAwayMode(dateStr) {
+  await api('POST', '/away', { awayUntil: dateStr });
+  await loadGarageConfig();
 }
 
 // ── Chat view ─────────────────────────────────────────────────────────────────
@@ -248,6 +327,7 @@ document.getElementById('back-btn').addEventListener('click', () => {
   stopPoll();
   show('list-screen');
   startListPoll();
+  loadSummary(); // refresh summary when returning from a chat
   api('GET', '/conversations').then(data => { if (data) { allConvs = data; renderList(); } });
 });
 
@@ -303,6 +383,15 @@ async function setResolved(resolved) {
 
 function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
+function startSummaryRefresh() {
+  if (summaryTimer) clearInterval(summaryTimer);
+  summaryTimer = setInterval(loadSummary, 15 * 60 * 1000); // refresh every 15 minutes
+}
+
+function stopSummaryRefresh() {
+  if (summaryTimer) { clearInterval(summaryTimer); summaryTimer = null; }
+}
+
 function timeAgo(date) {
   const diff = Math.round((Date.now() - date) / 1000);
   if (diff < 60)    return 'just now';
@@ -340,8 +429,18 @@ function urlBase64ToUint8Array(base64String) {
 
 if (token) {
   api('GET', '/conversations').then(data => {
-    if (data) { allConvs = data; renderList(); show('list-screen'); loadSummary(); startListPoll(); setupPush(); }
-    else show('login-screen');
+    if (data) {
+      allConvs = data;
+      renderList();
+      show('list-screen');
+      loadSummary();
+      loadGarageConfig();
+      startListPoll();
+      startSummaryRefresh();
+      setupPush();
+    } else {
+      show('login-screen');
+    }
   });
 } else {
   show('login-screen');
