@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node index.js",
-    "deploy": "gcloud functions deploy whatsapp-agent --gen2 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=whatsappWebhook --set-env-vars-from-file=.env.yaml"
+    "deploy": "gcloud functions deploy whatsapp-agent --gen2 --region=europe-west2 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=whatsappWebhook --env-vars-file=.env.yaml"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
