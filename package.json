@@ -1,0 +1,24 @@
+{
+  "name": "whatsapp-agent",
+  "version": "1.0.0",
+  "description": "CH Autoworks WhatsApp AI agent",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "gcloud functions deploy whatsapp-agent --gen2 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=whatsappWebhook --set-env-vars-from-file=.env.yaml"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/functions-framework": "^3.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.0",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^144.0.0",
+    "twilio": "^5.0.0",
+    "web-push": "^3.6.7"
+  }
+}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>CH Autoworks Inbox</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Inbox">
+  <meta name="theme-color" content="#075E54">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+
+  <!-- Login -->
+  <div id="login-screen" class="screen">
+    <div class="login-box">
+      <div class="login-logo">CH</div>
+      <h1>CH Autoworks</h1>
+      <p>Sign in to your inbox</p>
+      <input id="token-input" type="password" placeholder="Password" autocomplete="current-password">
+      <button id="login-btn">Sign in</button>
+      <p id="login-error" class="error hidden">Incorrect password</p>
+    </div>
+  </div>
+
+  <!-- Conversation list -->
+  <div id="list-screen" class="screen hidden">
+    <header>
+      <h1>CH Autoworks</h1>
+      <button id="logout-btn" class="icon-btn" title="Sign out">⏻</button>
+    </header>
+
+    <div id="summary-card">
+      <div id="summary-text">Loading summary…</div>
+    </div>
+
+    <div class="filter-tabs">
+      <div class="filter-tab active" data-filter="open">Open</div>
+      <div class="filter-tab" data-filter="resolved">Resolved</div>
+      <div class="filter-tab" data-filter="all">All</div>
+    </div>
+
+    <div id="conversation-list"></div>
+    <div id="list-empty" class="empty hidden">No conversations</div>
+  </div>
+
+  <!-- Conversation view -->
+  <div id="chat-screen" class="screen hidden">
+    <header>
+      <button id="back-btn" class="icon-btn">&#8592;</button>
+      <div class="header-info">
+        <div class="name" id="chat-name"></div>
+        <div class="sub"  id="chat-phone"></div>
+      </div>
+      <div class="header-actions">
+        <button id="toggle-btn"></button>
+        <button id="resolve-btn" class="resolve-btn">✓ Resolve</button>
+      </div>
+    </header>
+    <div id="human-banner" class="banner hidden">You are handling this conversation</div>
+    <div id="messages"></div>
+    <div id="reply-bar">
+      <textarea id="reply-input" placeholder="Message…" rows="1"></textarea>
+      <button id="send-btn">&#10148;</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
