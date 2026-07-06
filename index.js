@@ -6,10 +6,11 @@ const path       = require('path');
 const { handleMessage }    = require('./handler');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
-const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig } = require('./store');
+const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig, getUsage } = require('./store');
 const { sendMessage }                                         = require('./twilio');
 const { verifyTwilioSignature }                                = require('./security');
 const { isRateLimited }                                        = require('./rateLimit');
+const { buildBillingSummary }                                  = require('./billing');
 
 const app = express();
 app.set('trust proxy', true);
@@ -153,6 +154,24 @@ app.get('/garage-config', auth, async (req, res) => {
 app.post('/away', auth, async (req, res) => {
   const { awayUntil } = req.body; // ISO date string or null
   await setGarageConfig({ awayUntil: awayUntil || null });
+  res.json({ ok: true });
+});
+
+// Billing: Claude API cost tracking + markup for invoicing Ian.
+// Defaults to 0% markup — set via POST /billing-config once a rate is agreed.
+app.get('/billing-summary', auth, async (req, res) => {
+  const month = req.query.month || new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [usage, garageConfig] = await Promise.all([getUsage(month), getGarageConfig()]);
+  const markupPercent = garageConfig?.billingMarkupPercent ?? 0;
+  res.json(buildBillingSummary(month, usage, markupPercent));
+});
+
+app.post('/billing-config', auth, async (req, res) => {
+  const { markupPercent } = req.body;
+  if (typeof markupPercent !== 'number' || markupPercent < 0) {
+    return res.status(400).json({ error: 'markupPercent must be a non-negative number' });
+  }
+  await setGarageConfig({ billingMarkupPercent: markupPercent });
   res.json({ ok: true });
 });
 
