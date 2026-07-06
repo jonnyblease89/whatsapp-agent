@@ -156,6 +156,12 @@ share:
 - **Not included**: GCP infrastructure cost (Cloud Functions, Firestore) —
   this is usually negligible at pilot volume, but check the GCP billing
   console directly if you want to fold it in.
+- **Monthly email report**: a Cloud Scheduler job (`monthly-billing-report`,
+  `0 8 1 * *` Europe/London — the 1st of each month, not the 31st, since not
+  every month has one) hits `POST /monthly-billing-report`, which emails the
+  previous month's Claude cost summary to `bleasejonathan@gmail.com` via
+  Gmail SMTP (`email.js`, requires `GMAIL_USER` / `GMAIL_APP_PASSWORD` — a
+  Gmail App Password, not the account password).
 
 ## Known follow-ups (not yet done)
 
