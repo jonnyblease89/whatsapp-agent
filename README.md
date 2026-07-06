@@ -113,6 +113,20 @@ retry.js         Retry-with-backoff helper for external API calls
 - **Media messages**: a photo/attachment with no text body gets a
   placeholder acknowledgement reply instead of a silent `400`.
 
+## Monitoring
+
+- `GET /health` is an unauthenticated liveness endpoint, separate from the
+  Twilio-signed webhook, for uptime checks to hit.
+- A Cloud Monitoring uptime check (`whatsapp-agent health`) pings `/health`
+  every 5 minutes from multiple regions.
+- Two alert policies (in Cloud Monitoring, project `trans-invention-392414`),
+  both emailing `bleasejonathan@gmail.com`:
+  - **whatsapp-agent: health check failing** — fires if the uptime check
+    fails from more than one region.
+  - **whatsapp-agent: execution errors** — fires if the function has more
+    than 3 non-`ok` executions (errors/crashes/timeouts) in a 5-minute window.
+- View/edit these at https://console.cloud.google.com/monitoring/alerting?project=trans-invention-392414
+
 ## Known follow-ups (not yet done)
 
 These need access to live GCP/Twilio config, so they weren't done automatically:
@@ -120,5 +134,5 @@ These need access to live GCP/Twilio config, so they weren't done automatically:
 - Move secrets (`ANTHROPIC_API_KEY`, `TWILIO_AUTH_TOKEN`, `INBOX_SECRET`,
   `VAPID_PRIVATE_KEY`) from plain Cloud Function env vars into Secret Manager.
 - Add a Firestore TTL policy on `processed_messages.processedAt`.
-- Set up Cloud Monitoring alerting / an uptime check on the function.
 - Rotate `INBOX_SECRET` to a long random value (see note below).
+- Consider a latency alert and/or a billing budget alert as usage grows.
