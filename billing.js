@@ -28,4 +28,28 @@ function buildBillingSummary(month, usage, markupPercent) {
   };
 }
 
-module.exports = { computeCost, buildBillingSummary, PRICING };
+function previousMonth() {
+  const now = new Date();
+  const d   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  return d.toISOString().slice(0, 7); // YYYY-MM
+}
+
+function formatBillingEmail(summary) {
+  const modelLines = Object.entries(summary.models).map(([model, m]) =>
+    `  ${model}: ${m.requestCount} requests, ${m.inputTokens} in / ${m.outputTokens} out tokens, $${round2(m.costUSD)}`
+  ).join('\n') || '  (no usage recorded)';
+
+  return `whatsapp-agent — billing summary for ${summary.month}
+
+Claude API cost: $${summary.claudeCostUSD}
+Markup (${summary.markupPercent}%): $${summary.markupUSD}
+Total to invoice: $${summary.totalUSD}
+
+By model:
+${modelLines}
+
+${summary.note}
+GCP billing console: https://console.cloud.google.com/billing/0105C4-D7C7E5-AEE86A/reports?project=trans-invention-392414`;
+}
+
+module.exports = { computeCost, buildBillingSummary, previousMonth, formatBillingEmail, PRICING };

@@ -10,7 +10,8 @@ const { getConversations, getConversation, setStatus, setResolved, appendIanMess
 const { sendMessage }                                         = require('./twilio');
 const { verifyTwilioSignature }                                = require('./security');
 const { isRateLimited }                                        = require('./rateLimit');
-const { buildBillingSummary }                                  = require('./billing');
+const { buildBillingSummary, previousMonth, formatBillingEmail } = require('./billing');
+const { sendEmail }                                            = require('./email');
 
 const app = express();
 app.set('trust proxy', true);
@@ -173,6 +174,23 @@ app.post('/billing-config', auth, async (req, res) => {
   }
   await setGarageConfig({ billingMarkupPercent: markupPercent });
   res.json({ ok: true });
+});
+
+// Monthly billing report emailed to Jonathan (called by Cloud Scheduler on the
+// 1st of each month, reporting the month that just ended)
+app.post('/monthly-billing-report', auth, async (req, res) => {
+  try {
+    const month = previousMonth();
+    const usage = await getUsage(month);
+    const garageConfig = await getGarageConfig();
+    const markupPercent = garageConfig?.billingMarkupPercent ?? 0;
+    const summary = buildBillingSummary(month, usage, markupPercent);
+    await sendEmail('bleasejonathan@gmail.com', `whatsapp-agent billing — ${month}`, formatBillingEmail(summary));
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('monthly-billing-report failed:', e);
+    res.status(500).json({ error: 'failed to send report' });
+  }
 });
 
 functions.http('whatsappWebhook', app);
