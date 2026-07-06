@@ -77,4 +77,18 @@ async function clearHistory(phone) {
   await db.collection(COLLECTION).doc(phone).delete();
 }
 
-module.exports = { getConversations, getConversation, getHistory, saveHistory, appendIanMessage, setStatus, getStatus, setResolved, clearHistory };
+// Atomically claims a Twilio MessageSid so retried webhook deliveries (Twilio resends if it
+// doesn't get a fast 200) don't get processed — and replied to — twice. Returns false if this
+// SID was already claimed. Relies on Firestore's create() failing on an existing document,
+// which is atomic, rather than a get-then-set check which would race.
+async function claimMessage(sid) {
+  try {
+    await db.collection('processed_messages').doc(sid).create({ processedAt: new Date() });
+    return true;
+  } catch (err) {
+    if (err.code === 6 /* ALREADY_EXISTS */) return false;
+    throw err;
+  }
+}
+
+module.exports = { getConversations, getConversation, getHistory, saveHistory, appendIanMessage, setStatus, getStatus, setResolved, clearHistory, claimMessage };

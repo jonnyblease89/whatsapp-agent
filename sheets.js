@@ -22,7 +22,7 @@ async function lookupCustomer(phone) {
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_TAB}!A2:G`,
-    });
+    }, { timeout: 8_000 });
 
     const rows       = res.data.values || [];
     const normalised = normalisePhone(phone);

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: |
+          for f in $(find . -name '*.js' -not -path './node_modules/*'); do
+            node --check "$f"
+          done
+
+      - name: Verify entry point loads
+        run: node -e "require('./index.js')"
+        env:
+          ANTHROPIC_API_KEY: test
+          TWILIO_ACCOUNT_SID: ACtest
+          TWILIO_AUTH_TOKEN: test
+          TWILIO_WEBHOOK_URL: https://example.com/
+          TWILIO_WHATSAPP_NUMBER: "+10000000000"
+          INBOX_SECRET: test
+          GOOGLE_SHEET_ID: test
+          GARAGE_NAME: test
+          GARAGE_PHONE: "0123456789"
+          VAPID_PUBLIC_KEY: BMu9GJN1fLI0m-LhKWvM9584UaVowXsHQ2QPvWlhv2IOpo8KIPWEzdtpb2ZSX-gZ98QFWTuJJx_3lq6Dl7Md74c
+          VAPID_PRIVATE_KEY: "-cbXNFUqgXKqo2rk2X5do9dFKRrgcyaBO06_nn6V6_A"

@@ -1,22 +1,29 @@
 const functions  = require('@google-cloud/functions-framework');
 const express    = require('express');
 const cors       = require('cors');
+const crypto     = require('crypto');
 const path       = require('path');
 const { handleMessage }    = require('./handler');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
 const { getConversations, getConversation, setStatus, setResolved, appendIanMessage } = require('./store');
 const { sendMessage }                                         = require('./twilio');
+const { verifyTwilioSignature }                                = require('./security');
+const { isRateLimited }                                        = require('./rateLimit');
 
 const app = express();
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 function auth(req, res, next) {
-  if (req.headers['x-inbox-token'] !== process.env.INBOX_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  const provided = req.headers['x-inbox-token'] || '';
+  const expected = process.env.INBOX_SECRET || '';
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!match) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
@@ -24,12 +31,34 @@ function auth(req, res, next) {
 app.use('/inbox', express.static(path.join(__dirname, 'web')));
 
 // Twilio inbound webhook
-app.post('/', async (req, res) => {
-  const from = req.body.From;
-  const body = req.body.Body?.trim();
-  const to   = req.body.To;
-  if (!from || !body) return res.status(400).send('Bad request');
-  try { await handleMessage(from, body, to); } catch (e) { console.error(e); }
+const MAX_BODY_LENGTH = 2000;
+
+app.post('/', verifyTwilioSignature, async (req, res) => {
+  const from      = req.body.From;
+  const to        = req.body.To;
+  const messageSid = req.body.MessageSid;
+  const numMedia  = parseInt(req.body.NumMedia || '0', 10);
+  let body        = req.body.Body?.trim();
+
+  if (!from || !to || !messageSid) return res.status(400).send('Bad request');
+
+  if (!body && numMedia > 0) {
+    body = "[Customer sent a photo/attachment — couldn't be read automatically]";
+  }
+  if (!body) return res.status(400).send('Bad request');
+
+  if (body.length > MAX_BODY_LENGTH) body = body.slice(0, MAX_BODY_LENGTH);
+
+  if (isRateLimited(from)) {
+    console.error(`Rate limit hit for ${from}`);
+    return res.status(200).send('OK'); // ack Twilio, drop silently rather than reply-spam
+  }
+
+  try {
+    await handleMessage(from, body, to, messageSid);
+  } catch (e) {
+    console.error('handleMessage failed:', e);
+  }
   res.status(200).send('OK');
 });
 

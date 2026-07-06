@@ -44,6 +44,7 @@ Environment variables (see `.env.example` / `.env.yaml`):
 | `GARAGE_NAME` / `GARAGE_PHONE` | Business details used in agent responses |
 | `INBOX_SECRET` | Bearer token required on all `/inbox`-facing API routes |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web push keys for inbox notifications |
+| `TWILIO_WEBHOOK_URL` | Exact URL Twilio is configured to POST to — must match the Twilio console webhook config exactly, used to verify inbound request signatures |
 
 ## Running locally
 
@@ -77,6 +78,9 @@ push.js          Web push subscriptions
 sheets.js        Google Sheets integration
 web/             Static inbox web app (served at /inbox)
 SYSTEM_PROMPT.md Claude system prompt
+security.js      Twilio webhook signature verification
+rateLimit.js     Per-phone in-memory rate limiting
+retry.js         Retry-with-backoff helper for external API calls
 ```
 
 ## Security notes
@@ -84,4 +88,37 @@ SYSTEM_PROMPT.md Claude system prompt
 - `.env`, `.env.yaml`, and other local secrets are gitignored — never commit
   real credentials.
 - All `/inbox`-facing API routes require the `x-inbox-token` header to match
-  `INBOX_SECRET`.
+  `INBOX_SECRET`, compared using a timing-safe check.
+- The inbound Twilio webhook (`/`) verifies the `X-Twilio-Signature` header
+  against `TWILIO_WEBHOOK_URL` before processing anything — requests that
+  don't come from Twilio are rejected with 403. This matters because the
+  Cloud Function URL is visible in this (public) repo's `web/app.js`.
+- Inbound messages are capped at 2000 characters and rate-limited per phone
+  number (20 messages / 5 minutes) to bound cost exposure from abuse.
+
+## Resilience notes
+
+- **Idempotency**: each inbound message is claimed by its Twilio `MessageSid`
+  in Firestore (`processed_messages` collection) before processing, so a
+  Twilio retry (e.g. if the function is slow to respond) can't cause a
+  duplicate AI reply. Consider adding a Firestore TTL policy on
+  `processed_messages.processedAt` so this collection doesn't grow forever.
+- **Timeouts + retry**: calls to Claude, Twilio, and Google Sheets have
+  timeouts and retry transient failures (429/5xx/network errors) with
+  exponential backoff (`retry.js`).
+- **Graceful degradation**: if Claude fails even after retries, the customer
+  gets a friendly fallback message, the conversation is escalated to Ian
+  (status `human`), and a push notification is sent — instead of the
+  customer being left with no reply at all.
+- **Media messages**: a photo/attachment with no text body gets a
+  placeholder acknowledgement reply instead of a silent `400`.
+
+## Known follow-ups (not yet done)
+
+These need access to live GCP/Twilio config, so they weren't done automatically:
+
+- Move secrets (`ANTHROPIC_API_KEY`, `TWILIO_AUTH_TOKEN`, `INBOX_SECRET`,
+  `VAPID_PRIVATE_KEY`) from plain Cloud Function env vars into Secret Manager.
+- Add a Firestore TTL policy on `processed_messages.processedAt`.
+- Set up Cloud Monitoring alerting / an uptime check on the function.
+- Rotate `INBOX_SECRET` to a long random value (see note below).

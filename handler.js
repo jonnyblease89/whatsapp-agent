@@ -1,4 +1,4 @@
-const { getHistory, saveHistory, clearHistory, getStatus } = require('./store');
+const { getHistory, saveHistory, clearHistory, getStatus, claimMessage } = require('./store');
 const { askClaude }      = require('./claude');
 const { sendMessage }    = require('./twilio');
 const { lookupCustomer } = require('./sheets');
@@ -40,8 +40,16 @@ function getBusinessHoursStatus() {
   return { open, nextOpen };
 }
 
-async function handleMessage(from, body, to) {
+async function handleMessage(from, body, to, messageSid) {
   const phone = from.replace('whatsapp:', '');
+
+  if (messageSid) {
+    const claimed = await claimMessage(messageSid);
+    if (!claimed) {
+      console.log(`Duplicate delivery of ${messageSid} for ${phone} — skipping`);
+      return;
+    }
+  }
 
   if (RESET_PHRASES.includes(body.toLowerCase())) {
     await clearHistory(phone);
@@ -64,20 +72,38 @@ async function handleMessage(from, body, to) {
     lookupCustomer(phone),
   ]);
 
-  const messages = [...history, { role: 'user', content: body, sender: 'customer', ts: new Date().toISOString() }];
+  const messages     = [...history, { role: 'user', content: body, sender: 'customer', ts: new Date().toISOString() }];
+  const customerName = customer ? `${customer.firstName} ${customer.lastName}`.trim() : phone;
 
-  const reply = await askClaude(
-    messages.map(m => ({ role: m.role, content: m.content })),
-    buildSystemPrompt(customer, getBusinessHoursStatus()),
-  );
+  let reply;
+  try {
+    reply = await askClaude(
+      messages.map(m => ({ role: m.role, content: m.content })),
+      buildSystemPrompt(customer, getBusinessHoursStatus()),
+    );
+  } catch (err) {
+    console.error('askClaude failed after retries:', err);
+    const fallback = "Sorry, I'm having a technical hiccup right now — I've flagged this for Ian and he'll get back to you personally as soon as he can.";
+    const updated  = [...messages, { role: 'assistant', content: fallback, sender: 'bot', ts: new Date().toISOString() }];
+    const trimmed  = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
+
+    await Promise.all([
+      saveHistory(phone, trimmed, {
+        customerName, phone, twilioNumber: to,
+        status: 'human', escalated: true,
+        lastMessage: fallback.slice(0, 120),
+      }),
+      sendMessage(to, from, fallback),
+      sendPush(`⚠️ ${customerName} — bot error, needs you`, body),
+    ]);
+    return;
+  }
 
   const escalated  = reply.includes('[ESCALATE]');
   const cleanReply = reply.replace('[ESCALATE]', '').trim();
 
   const updated = [...messages, { role: 'assistant', content: cleanReply, sender: 'bot', ts: new Date().toISOString() }];
   const trimmed = updated.length > MAX_HISTORY ? updated.slice(-MAX_HISTORY) : updated;
-
-  const customerName = customer ? `${customer.firstName} ${customer.lastName}`.trim() : phone;
 
   await Promise.all([
     saveHistory(phone, trimmed, {
@@ -99,7 +125,7 @@ function buildSystemPrompt(customer, { open, nextOpen }) {
   const garagePhone = process.env.GARAGE_PHONE;
   const garageName  = process.env.GARAGE_NAME;
 
-  let prompt = `You are a friendly and helpful AI assistant for ${garageName}, a garage and MOT testing station run by Ian.
+  let prompt = `You are a friendly and helpful AI assistant for ${garageName}, a garage and MOT testing station run by Ian and his team.
 
 When a customer first messages you, introduce yourself warmly and briefly. Tell them:
 - They're chatting with an AI assistant on behalf of ${garageName}
@@ -116,10 +142,15 @@ Your role is to:
 - Help diagnose problems based on symptoms the customer describes
 - Answer general questions about the garage and its services
 
+Context — why customers message:
+- Many customers message after receiving an automated SMS reminder sent 21 days before their MOT is due. If someone messages asking to book an MOT and doesn't give much context, this is likely why — just get the registration, find out when suits them, and pass it to Ian. No need to ask how they heard about it.
+
 Guidelines:
 - Keep messages short and conversational — this is WhatsApp, not email
 - If a customer describes a fault, it's fine to offer one or two likely causes to show you understand, but don't turn it into a deep diagnostic back-and-forth — you're not there to fix the car over WhatsApp. Focus on understanding what the customer wants, then steer them towards action (booking in so Ian can take a proper look). The goal is to make the customer feel heard and get them booked in, not to solve the problem in the chat
-- When a customer wants to book in, do not confirm or offer specific slots — Ian manages the schedule himself. Instead, find out: what the vehicle needs, the registration, and when would generally suit them. For drop-off, let them know the garage works best with an early drop — ideally between 8am and 9am so Ian can get started on the car first thing and customers can leave it for the day. If they'd prefer a slightly later drop to avoid rush hour traffic, up to 9:30am works too. Let Ian know which they prefer when passing the booking over.
+- When a customer wants to book in, do not confirm or offer specific slots — Ian manages the schedule himself. Instead, find out: what the vehicle needs, the registration, and when would generally suit them. Customers drop their car at the garage (Warren Rd, Cheadle SK8 5AA). Drop-off works best between 8am and 9am so Ian can get started first thing — customers leave it for the day and collect before 5pm. If 9:30am suits better to avoid rush-hour traffic that works too. There is a key drop box to the right of the garage gates if they arrive when it's not yet open. Let Ian know the preferred drop-off time when passing the booking over. The garage does not offer a collection or delivery service.
+- If a customer asks whether their car is safe to drive, give a practical honest answer rather than just deferring to Ian. For most suspension advisories or minor leaks: it's usually okay for a short while but should be sorted soon and they should avoid motorways / take it easy. For anything brake-related, a snapped spring, or a ball joint failure: be clear they should not drive it until it's been looked at and suggest getting it recovered if they're not nearby. Use common sense — err on the side of caution for anything that sounds potentially dangerous.
+- Payment is usually by bank transfer. The garage also has a card machine if that's easier.
 - Do not ask customers to call or contact you — you are the contact point
 
 Pricing — you can share these confidently when customers ask:
@@ -131,6 +162,7 @@ Pricing — you can share these confidently when customers ask:
 - Wheel alignment: £60. If the track rods are seized it's an additional £36 on top — this can only be confirmed once the car is on the ramp.
 - Brake fluid service: £80
 - Diagnostic scan: £60
+- For brake discs, pads, suspension parts, and other components: prices vary significantly by make and model. Premium and German brands (BMW, Audi, Mercedes, Porsche) in particular have expensive OEM parts. Do not guess a price for these — tell the customer Ian will look up parts costs and get back to them with a quote. Labour is at £72/hour regardless.
 
 MOT rules worth knowing (share these when relevant):
 - An MOT can be carried out at any time — the customer always gets a full 12 months from the test date
