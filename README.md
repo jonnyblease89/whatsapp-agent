@@ -81,6 +81,7 @@ SYSTEM_PROMPT.md Claude system prompt
 security.js      Twilio webhook signature verification
 rateLimit.js     Per-phone in-memory rate limiting
 retry.js         Retry-with-backoff helper for external API calls
+billing.js       Claude API cost calculation + markup for invoicing
 ```
 
 ## Security notes
@@ -126,6 +127,35 @@ retry.js         Retry-with-backoff helper for external API calls
   - **whatsapp-agent: execution errors** — fires if the function has more
     than 3 non-`ok` executions (errors/crashes/timeouts) in a 5-minute window.
 - View/edit these at https://console.cloud.google.com/monitoring/alerting?project=trans-invention-392414
+
+## Billing
+
+Since this runs on Jonathan's GCP project and Anthropic API key (Ian pays for
+Twilio directly), Claude API usage is tracked so Ian can be invoiced for his
+share:
+
+- Every Claude API call records its token usage and cost into a
+  `usage_monthly` Firestore collection (one doc per calendar month), via
+  `store.recordUsage()` — called from `claude.js` after every response.
+- `GET /billing-summary?month=YYYY-MM` (auth required, defaults to the
+  current month) returns the actual Claude cost, current markup %, and the
+  total to invoice:
+  ```bash
+  curl "https://europe-west2-trans-invention-392414.cloudfunctions.net/whatsapp-agent/billing-summary" \
+    -H "x-inbox-token: $INBOX_SECRET"
+  ```
+- `POST /billing-config` sets the markup percentage applied on top of actual
+  cost (currently 0% — pure cost tracking until a rate is agreed):
+  ```bash
+  curl -X POST ".../whatsapp-agent/billing-config" \
+    -H "x-inbox-token: $INBOX_SECRET" -H "content-type: application/json" \
+    -d '{"markupPercent": 20}'
+  ```
+- Pricing is hardcoded per-model in `billing.js` (`PRICING`) — update it if
+  the model changes or Anthropic's list pricing changes.
+- **Not included**: GCP infrastructure cost (Cloud Functions, Firestore) —
+  this is usually negligible at pilot volume, but check the GCP billing
+  console directly if you want to fold it in.
 
 ## Known follow-ups (not yet done)
 
