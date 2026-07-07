@@ -4,6 +4,7 @@ const cors       = require('cors');
 const crypto     = require('crypto');
 const path       = require('path');
 const { handleMessage, buildSystemPrompt, getBusinessHoursStatus } = require('./handler');
+const { lookupCustomer } = require('./sheets');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
 const { askClaude }        = require('./claude');
@@ -94,7 +95,7 @@ app.post('/', verifyTwilioSignature, async (req, res) => {
 const MAX_TEST_MESSAGES = 100;
 
 app.post('/test-chat', testAuth, async (req, res) => {
-  const { messages } = req.body;
+  const { messages, phone } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages array required' });
@@ -107,18 +108,29 @@ app.post('/test-chat', testAuth, async (req, res) => {
       return res.status(400).json({ error: 'each message needs role "user"|"assistant" and non-empty string content' });
     }
   }
+  if (phone !== undefined && typeof phone !== 'string') {
+    return res.status(400).json({ error: 'phone must be a string' });
+  }
   const claudeMessages = messages.map(m => ({
     role:    m.role,
     content: m.content.length > MAX_BODY_LENGTH ? m.content.slice(0, MAX_BODY_LENGTH) : m.content,
   }));
 
-  const systemPrompt = buildSystemPrompt(null, getBusinessHoursStatus(), null);
+  // Faux phone number lets the tester simulate a known vs. unknown customer, same lookup
+  // the real Twilio webhook does — but nothing here is saved to Firestore or billed.
+  const customer = phone?.trim() ? await lookupCustomer(phone.trim()) : null;
+  const systemPrompt = buildSystemPrompt(customer, getBusinessHoursStatus(), null);
 
   try {
     const reply      = await askClaude(claudeMessages, systemPrompt, undefined, { track: false });
     const escalated  = reply.includes('[ESCALATE]');
     const cleanReply = reply.replace('[ESCALATE]', '').trim();
-    res.json({ reply: cleanReply, escalated });
+    res.json({
+      reply: cleanReply,
+      escalated,
+      customerKnown: !!customer,
+      customerName: customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
+    });
   } catch (e) {
     console.error('test-chat failed:', e);
     res.status(500).json({ error: 'Claude request failed' });

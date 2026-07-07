@@ -8,9 +8,11 @@ const TEST_TOKEN = '91c9b52395639ce83fdce922849e17b53df1545b0ecff4d9';
 // SMS thread would build up.
 const thread = [];
 
-const messagesEl = document.getElementById('messages');
-const input      = document.getElementById('reply-input');
-const sendBtn    = document.getElementById('send-btn');
+const messagesEl     = document.getElementById('messages');
+const input          = document.getElementById('reply-input');
+const sendBtn        = document.getElementById('send-btn');
+const phoneInput     = document.getElementById('phone-input');
+const customerStatus = document.getElementById('customer-status');
 
 function escapeHtml(str) {
   const d = document.createElement('div');
@@ -35,6 +37,21 @@ function appendBubble(role, content, escalated = false) {
   messagesEl.appendChild(wrap);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return wrap;
+}
+
+function updateCustomerStatus(known, name) {
+  customerStatus.classList.remove('known', 'unknown');
+  if (!phoneInput.value.trim()) {
+    customerStatus.textContent = '';
+    return;
+  }
+  if (known) {
+    customerStatus.textContent = `✅ Known: ${name}`;
+    customerStatus.classList.add('known');
+  } else {
+    customerStatus.textContent = '🆕 New customer';
+    customerStatus.classList.add('unknown');
+  }
 }
 
 function showTyping() {
@@ -66,7 +83,7 @@ async function sendMessage() {
     const res = await fetch('../test-chat', {
       method: 'POST',
       headers: { 'x-test-token': TEST_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: thread }),
+      body: JSON.stringify({ messages: thread, phone: phoneInput.value.trim() }),
     });
     hideTyping();
 
@@ -79,6 +96,7 @@ async function sendMessage() {
     }
     thread.push({ role: 'assistant', content: data.reply });
     appendBubble('assistant', data.reply, data.escalated);
+    updateCustomerStatus(data.customerKnown, data.customerName);
   } catch {
     hideTyping();
     thread.pop();
@@ -101,6 +119,12 @@ input.addEventListener('keydown', e => {
 input.addEventListener('input', () => {
   input.style.height = 'auto';
   input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+});
+
+phoneInput.addEventListener('input', () => {
+  // Stale until the next message is sent and re-looked-up under the new number
+  customerStatus.textContent = '';
+  customerStatus.classList.remove('known', 'unknown');
 });
 
 input.focus();

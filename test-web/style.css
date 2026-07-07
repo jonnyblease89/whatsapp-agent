@@ -9,8 +9,35 @@
 }
 
 #chat-screen {
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto 1fr auto;
 }
+
+#customer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--wa-panel, #F7F7F7);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  flex-shrink: 0;
+}
+#phone-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(0,0,0,.15);
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: inherit;
+}
+#customer-status {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#customer-status.known { color: #2E7D32; }
+#customer-status.unknown { color: #757575; }
 
 .msg { white-space: pre-wrap; }
 
