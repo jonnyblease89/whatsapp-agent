@@ -58,7 +58,7 @@ async function appendIanMessage(phone, content) {
   const history  = await getHistory(phone);
   const messages = [...history, { role: 'assistant', content, sender: 'ian', ts: new Date().toISOString() }];
   const trimmed  = messages.length > MAX_HISTORY ? messages.slice(-MAX_HISTORY) : messages;
-  await saveHistory(phone, trimmed, { lastMessage: content.slice(0, 120) });
+  await saveHistory(phone, trimmed, { lastMessage: content.slice(0, 120), status: 'human' });
 }
 
 async function setStatus(phone, status) {
