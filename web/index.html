@@ -46,18 +46,23 @@
       <button id="away-form-dismiss" class="away-dismiss">✕</button>
     </div>
 
-    <div id="summary-card">
-      <div id="summary-text">Loading summary…</div>
+    <div class="main-tabs">
+      <div class="main-tab active" data-tab="inbox">Inbox</div>
+      <div class="main-tab" data-tab="summary">Summary</div>
     </div>
 
-    <div class="filter-tabs">
-      <div class="filter-tab active" data-filter="open">Open</div>
-      <div class="filter-tab" data-filter="resolved">Resolved</div>
-      <div class="filter-tab" data-filter="all">All</div>
+    <div id="inbox-pane">
+      <div id="conversation-list"></div>
+      <div id="list-empty" class="empty hidden">No conversations</div>
     </div>
 
-    <div id="conversation-list"></div>
-    <div id="list-empty" class="empty hidden">No conversations</div>
+    <div id="summary-pane" class="hidden">
+      <div class="summary-pane-header">
+        <span>Today's summary</span>
+        <button id="summary-refresh-btn" class="summary-refresh-btn" title="Refresh">↻</button>
+      </div>
+      <div id="summary-content"><span style="opacity:0.5">Loading…</span></div>
+    </div>
   </div>
 
   <!-- Conversation view -->

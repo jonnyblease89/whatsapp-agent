@@ -4,7 +4,6 @@ let token           = localStorage.getItem('inbox_token') || '';
 let currentPhone    = null;
 let pollTimer       = null;
 let summaryTimer    = null;
-let activeFilter    = 'open';
 let allConvs        = [];
 let initialChatLoad = false; // true only for the very first render of a chat
 let isAway          = false;
@@ -64,16 +63,19 @@ function logout() {
   show('login-screen');
 }
 
-// ── Filter tabs ───────────────────────────────────────────────────────────────
+// ── Main tabs (Inbox / Summary) ───────────────────────────────────────────────
 
-document.querySelectorAll('.filter-tab').forEach(tab => {
+document.querySelectorAll('.main-tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    activeFilter = tab.dataset.filter;
-    renderList();
+    const pane = tab.dataset.tab;
+    document.getElementById('inbox-pane').classList.toggle('hidden', pane !== 'inbox');
+    document.getElementById('summary-pane').classList.toggle('hidden', pane !== 'summary');
   });
 });
+
+document.getElementById('summary-refresh-btn').addEventListener('click', loadSummary);
 
 // ── Conversation list ─────────────────────────────────────────────────────────
 
@@ -81,34 +83,38 @@ function renderList() {
   const el    = document.getElementById('conversation-list');
   const empty = document.getElementById('list-empty');
 
-  const filtered = allConvs.filter(c => {
-    if (activeFilter === 'open')     return !c.resolved;
-    if (activeFilter === 'resolved') return  c.resolved;
-    return true;
+  // Active conversations first (most recent), resolved pushed to bottom
+  const sorted = [...allConvs].sort((a, b) => {
+    if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+    const ta = a.lastMessageAt ? new Date(a.lastMessageAt) : new Date(0);
+    const tb = b.lastMessageAt ? new Date(b.lastMessageAt) : new Date(0);
+    return tb - ta;
   });
 
-  if (!filtered.length) { el.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  if (!sorted.length) { el.innerHTML = ''; empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
 
-  el.innerHTML = filtered.map(c => {
-    const name    = c.customerName || c.phone;
-    const initial = name[0].toUpperCase();
-    const time    = c.lastMessageAt ? timeAgo(new Date(c.lastMessageAt)) : '';
-    const cls     = (c.resolved ? 'resolved' : c.escalated ? 'escalated' : '') + (c.unread ? ' unread' : '');
-    const badge   = c.resolved
-      ? '<span class="badge resolved">Resolved</span>'
+  el.innerHTML = sorted.map(c => {
+    const name      = c.customerName || c.phone;
+    const initial   = name[0].toUpperCase();
+    const time      = c.lastMessageAt ? timeAgo(new Date(c.lastMessageAt)) : '';
+    const avatarCls = c.escalated ? 'escalated' : c.resolved ? 'resolved' : c.status === 'human' ? 'human' : '';
+    const itemCls   = [c.unread ? 'unread' : '', c.escalated ? 'escalated' : ''].filter(Boolean).join(' ');
+    const badge     = c.resolved
+      ? '<span class="badge resolved">✓ Done</span>'
       : c.escalated
-        ? '<span class="badge escalated">Needs Ian</span>'
+        ? '<span class="badge escalated">⚠ Needs Ian</span>'
         : c.status === 'human'
           ? '<span class="badge human">You</span>'
           : '<span class="badge bot">Bot</span>';
-    const dot = c.unread ? '<span class="unread-dot"></span>' : '';
+    const dot     = c.unread ? '<span class="unread-dot"></span>' : '';
+    const preview = String(c.lastMessage || 'No messages yet').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-    return `<div class="conv-item ${cls}" data-phone="${c.phone}">
-      <div class="conv-avatar">${initial}</div>
+    return `<div class="conv-item ${itemCls}" data-phone="${c.phone}">
+      <div class="conv-avatar ${avatarCls}">${initial}</div>
       <div class="conv-body">
         <div class="conv-name">${name}</div>
-        <div class="conv-preview">${c.lastMessage || 'No messages yet'}</div>
+        <div class="conv-preview">${preview}</div>
       </div>
       <div class="conv-meta">
         <div class="conv-time">${time}</div>
@@ -141,18 +147,16 @@ function renderMarkdown(md) {
 }
 
 async function loadSummary() {
-  const card = document.getElementById('summary-card');
-  const text = document.getElementById('summary-text');
-
-  card.classList.remove('hidden');
-  text.innerHTML = '<span style="opacity:0.5">Loading today\'s summary…</span>';
+  const el = document.getElementById('summary-content');
+  if (!el) return;
+  el.innerHTML = '<span style="opacity:0.5">Loading today\'s summary…</span>';
 
   const data = await api('GET', '/inbox-summary');
   if (data?.summary) {
     const today = new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    text.innerHTML = `<strong>Today · ${today}</strong><br><br>${renderMarkdown(data.summary)}`;
+    el.innerHTML = `<strong>Today · ${today}</strong><br><br>${renderMarkdown(data.summary)}`;
   } else {
-    text.innerHTML = '<span style="opacity:0.5">No conversations today yet.</span>';
+    el.innerHTML = '<span style="opacity:0.5">No conversations today yet.</span>';
   }
 }
 
