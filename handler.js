@@ -156,7 +156,7 @@ async function handleMessage(from, body, to, messageSid) {
       customerName,
       phone,
       twilioNumber: to,
-      status:   escalated ? 'human' : 'bot',
+      status:   'bot', // Ian takes over manually via inbox — [ESCALATE] only notifies, doesn't silence bot
       resolved: false,  // auto-reopen any previously resolved conversation
       escalated,
       lastMessage: cleanReply.slice(0, 120),
@@ -177,7 +177,7 @@ function buildSystemPrompt(customer, { open, nextOpen }, awayUntil = null) {
   });
 
   const escalationInstructions = open
-    ? `The garage is currently open. If the customer is frustrated, the query is too complex, they ask to speak to Ian directly, or you genuinely can't help — include [ESCALATE] at the end of your reply and let them know Ian will be in touch shortly.`
+    ? `The garage is currently open. If the customer is frustrated, the query is too complex, they ask to speak to Ian directly, or you genuinely can't help — include [ESCALATE] at the end of your reply and let them know Ian will be in touch shortly. Only use [ESCALATE] once per conversation — if it's already appeared in a previous reply, Ian has been notified and you should continue helping without using it again.`
     : `The garage is currently closed. Do not use [ESCALATE] — Ian is not monitoring messages in real time. Take the details, reassure the customer their message is noted, and tell them Ian will be in touch when he's next in.`;
 
   let prompt = PROMPT_TEMPLATE
