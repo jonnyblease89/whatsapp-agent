@@ -4,3 +4,4 @@ node_modules/
 *.local
 firebase-debug.log
 .DS_Store
+transcripts*.md
