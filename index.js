@@ -3,9 +3,10 @@ const express    = require('express');
 const cors       = require('cors');
 const crypto     = require('crypto');
 const path       = require('path');
-const { handleMessage }    = require('./handler');
+const { handleMessage, buildSystemPrompt, getBusinessHoursStatus } = require('./handler');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
+const { askClaude }        = require('./claude');
 const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig, getUsage } = require('./store');
 const { sendMessage }                                         = require('./twilio');
 const { verifyTwilioSignature }                                = require('./security');
@@ -29,11 +30,29 @@ function auth(req, res, next) {
   next();
 }
 
+// Separate, lower-value token for the staging chat — deliberately not INBOX_SECRET, so a
+// token baked into test-web/app.js (no login screen) can't be used to read real customer
+// conversations or send messages as the garage if it ever leaks.
+function testAuth(req, res, next) {
+  const provided = req.headers['x-test-token'] || '';
+  const expected = process.env.TEST_CHAT_SECRET || '';
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  const match = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!match) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
 // Liveness check for uptime monitoring — no auth, no side effects
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
 
 // Inbox web app
 app.use('/inbox', express.static(path.join(__dirname, 'web')));
+
+// Staging chat — test the AI directly in a browser without going through Twilio/WhatsApp.
+// No Firestore conversation is created, no push notification is sent to Ian, and usage isn't
+// billed to him (track: false below) — this is a sandbox, isolated from real customer data.
+app.use('/test', express.static(path.join(__dirname, 'test-web')));
 
 // Twilio inbound webhook
 const MAX_BODY_LENGTH = 2000;
@@ -65,6 +84,31 @@ app.post('/', verifyTwilioSignature, async (req, res) => {
     console.error('handleMessage failed:', e);
   }
   res.status(200).send('OK');
+});
+
+// Staging chat: one message in, one AI reply out, using the live system prompt and real
+// current business hours — no conversation history, no scenario controls. Deliberately
+// bypasses handleMessage — no Firestore write, no Twilio send, no push notification, and
+// usage isn't billed to Ian (track: false below).
+app.post('/test-chat', testAuth, async (req, res) => {
+  const message = req.body.message;
+
+  if (typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'message (non-empty string) required' });
+  }
+  const trimmed = message.trim().slice(0, MAX_BODY_LENGTH);
+
+  const systemPrompt = buildSystemPrompt(null, getBusinessHoursStatus(), null);
+
+  try {
+    const reply      = await askClaude([{ role: 'user', content: trimmed }], systemPrompt, undefined, { track: false });
+    const escalated  = reply.includes('[ESCALATE]');
+    const cleanReply = reply.replace('[ESCALATE]', '').trim();
+    res.json({ reply: cleanReply, escalated });
+  } catch (e) {
+    console.error('test-chat failed:', e);
+    res.status(500).json({ error: 'Claude request failed' });
+  }
 });
 
 // Inbox: list conversations
