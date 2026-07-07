@@ -86,22 +86,36 @@ app.post('/', verifyTwilioSignature, async (req, res) => {
   res.status(200).send('OK');
 });
 
-// Staging chat: one message in, one AI reply out, using the live system prompt and real
-// current business hours — no conversation history, no scenario controls. Deliberately
-// bypasses handleMessage — no Firestore write, no Twilio send, no push notification, and
-// usage isn't billed to Ian (track: false below).
-app.post('/test-chat', testAuth, async (req, res) => {
-  const message = req.body.message;
+// Staging chat: behaves like a real SMS conversation — the browser tab holds the running
+// thread and sends it in full each turn, so the AI has real context (won't re-introduce
+// itself, remembers what was already said). Nothing persists server-side: no Firestore
+// write, no Twilio send, no push notification, and usage isn't billed to Ian (track: false).
+// Refreshing the page starts a brand new conversation — that's the only "reset".
+const MAX_TEST_MESSAGES = 100;
 
-  if (typeof message !== 'string' || !message.trim()) {
-    return res.status(400).json({ error: 'message (non-empty string) required' });
+app.post('/test-chat', testAuth, async (req, res) => {
+  const { messages } = req.body;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages array required' });
   }
-  const trimmed = message.trim().slice(0, MAX_BODY_LENGTH);
+  if (messages.length > MAX_TEST_MESSAGES) {
+    return res.status(400).json({ error: `too many messages (max ${MAX_TEST_MESSAGES})` });
+  }
+  for (const m of messages) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string' || !m.content.trim()) {
+      return res.status(400).json({ error: 'each message needs role "user"|"assistant" and non-empty string content' });
+    }
+  }
+  const claudeMessages = messages.map(m => ({
+    role:    m.role,
+    content: m.content.length > MAX_BODY_LENGTH ? m.content.slice(0, MAX_BODY_LENGTH) : m.content,
+  }));
 
   const systemPrompt = buildSystemPrompt(null, getBusinessHoursStatus(), null);
 
   try {
-    const reply      = await askClaude([{ role: 'user', content: trimmed }], systemPrompt, undefined, { track: false });
+    const reply      = await askClaude(claudeMessages, systemPrompt, undefined, { track: false });
     const escalated  = reply.includes('[ESCALATE]');
     const cleanReply = reply.replace('[ESCALATE]', '').trim();
     res.json({ reply: cleanReply, escalated });

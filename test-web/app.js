@@ -3,6 +3,11 @@
 // allows sending test messages to the AI, not reading real customer conversations.
 const TEST_TOKEN = '91c9b52395639ce83fdce922849e17b53df1545b0ecff4d9';
 
+// The running conversation for this tab only — lost on refresh (ephemeral), never sent
+// to Firestore. Sent in full on every turn so the AI has real context, same as a real
+// SMS thread would build up.
+const thread = [];
+
 const messagesEl = document.getElementById('messages');
 const input      = document.getElementById('reply-input');
 const sendBtn    = document.getElementById('send-btn');
@@ -24,7 +29,7 @@ function appendBubble(role, content, escalated = false) {
   if (escalated) {
     const flag = document.createElement('div');
     flag.className = 'escalate-flag';
-    flag.textContent = '⚠️ [ESCALATE] — bot would hand off to Ian here';
+    flag.textContent = '⚠️ [ESCALATE] — bot would hand off to Ian here (would go quiet until he replies)';
     wrap.appendChild(flag);
   }
   messagesEl.appendChild(wrap);
@@ -53,6 +58,7 @@ async function sendMessage() {
   input.disabled = true;
   sendBtn.disabled = true;
 
+  thread.push({ role: 'user', content: text });
   appendBubble('user', text);
   showTyping();
 
@@ -60,19 +66,24 @@ async function sendMessage() {
     const res = await fetch('../test-chat', {
       method: 'POST',
       headers: { 'x-test-token': TEST_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ messages: thread }),
     });
     hideTyping();
 
     const data = await res.json();
     if (!res.ok) {
+      thread.pop(); // roll back so the thread stays valid (strict user/assistant alternation) — retry re-adds cleanly
       appendBubble('assistant', `⚠️ ${data.error || 'Request failed'}`);
+      input.value = text;
       return;
     }
+    thread.push({ role: 'assistant', content: data.reply });
     appendBubble('assistant', data.reply, data.escalated);
   } catch {
     hideTyping();
+    thread.pop();
     appendBubble('assistant', '⚠️ Network error — try again');
+    input.value = text;
   } finally {
     input.disabled = false;
     sendBtn.disabled = false;
