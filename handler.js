@@ -144,8 +144,18 @@ async function handleMessage(from, body, to, messageSid) {
     return;
   }
 
-  const escalated  = reply.includes('[ESCALATE]');
-  const cleanReply = reply.replace('[ESCALATE]', '').trim();
+  const justEscalated  = reply.includes('[ESCALATE]');
+  const cleanReply     = reply.replace('[ESCALATE]', '').trim();
+
+  // Claude doesn't reliably suppress [ESCALATE] on repeat turns of the same conversation
+  // (observed re-firing on every reply in a multi-turn frustrated-customer test), so the
+  // "only notify once" rule is enforced here in code rather than trusted to the prompt.
+  // escalated is sticky — once true it stays true (surviving replies that don't re-tag)
+  // until Ian resolves the conversation (see setResolved) — otherwise the "Needs Ian"
+  // inbox badge could silently clear itself on the next ordinary reply.
+  const alreadyEscalated = conv?.escalated === true;
+  const escalated         = justEscalated || alreadyEscalated;
+  const shouldNotify      = justEscalated && !alreadyEscalated;
 
   const replyMsg = { role: 'assistant', content: cleanReply, sender: 'bot', ts: new Date().toISOString() };
   const updated  = [...history, userMsg, replyMsg];
@@ -163,7 +173,7 @@ async function handleMessage(from, body, to, messageSid) {
       unread: true,
     }),
     sendMessage(to, from, cleanReply),
-    ...(escalated ? [sendPush(`⚠️ ${customerName} needs you`, body)] : []),
+    ...(shouldNotify ? [sendPush(`⚠️ ${customerName} needs you`, body)] : []),
   ]);
 }
 

@@ -71,7 +71,10 @@ async function getStatus(phone) {
 }
 
 async function setResolved(phone, resolved) {
-  await db.collection(COLLECTION).doc(phone).set({ resolved }, { merge: true });
+  // escalated is now sticky (handler.js) so it doesn't clear itself on an ordinary reply —
+  // resolving is what clears the "Needs Ian" flag once Ian's actually dealt with it.
+  const update = resolved ? { resolved, escalated: false } : { resolved };
+  await db.collection(COLLECTION).doc(phone).set(update, { merge: true });
 }
 
 async function markRead(phone) {
