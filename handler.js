@@ -199,12 +199,15 @@ Ian is on holiday and will not be available until ${dateStr}.
 - If someone has an urgent safety issue, acknowledge it and suggest they search for a nearby garage or contact their breakdown provider (RAC/AA)`;
   }
 
+  // base is the cacheable part — identical for all customers within the same hour/status
+  // customerContext varies per customer and is appended uncached
+  let customerContext = null;
   if (customer) {
     const vehicleList = customer.vehicles.map((v, i) =>
       `  ${i + 1}. ${v.make} ${v.model} (${v.registration}) — MOT: ${v.motExpiry || 'not on record'}`
     ).join('\n');
 
-    prompt += `\n\nCUSTOMER RECORD
+    customerContext = `CUSTOMER RECORD
 
 This customer is already on the system:
 - Name: ${customer.firstName} ${customer.lastName}
@@ -217,7 +220,7 @@ ${customer.vehicles.length > 1
 The vehicle information above is background context only — do not use it to validate or question registrations the customer provides. If a customer mentions a different or additional registration, accept it without question. They may have vehicles not yet on the system.`;
   }
 
-  return prompt;
+  return { base: prompt, customerContext };
 }
 
 module.exports = { handleMessage, buildSystemPrompt, getBusinessHoursStatus };

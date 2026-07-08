@@ -1,12 +1,15 @@
 // USD per 1M tokens. Update when switching models or on a pricing change.
 const PRICING = {
-  'claude-sonnet-4-6': { input: 3, output: 15 },
+  'claude-sonnet-4-6': { input: 3, cacheWrite: 3.75, cacheRead: 0.30, output: 15 },
 };
 
-function computeCost(model, inputTokens, outputTokens) {
+function computeCost(model, inputTokens, outputTokens, cacheWriteTokens = 0, cacheReadTokens = 0) {
   const rates = PRICING[model];
   if (!rates) return 0;
-  return (inputTokens / 1e6) * rates.input + (outputTokens / 1e6) * rates.output;
+  return (inputTokens       / 1e6) * rates.input
+       + (outputTokens      / 1e6) * rates.output
+       + (cacheWriteTokens  / 1e6) * rates.cacheWrite
+       + (cacheReadTokens   / 1e6) * rates.cacheRead;
 }
 
 function round2(n) {
