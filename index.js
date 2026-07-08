@@ -44,8 +44,44 @@ function testAuth(req, res, next) {
   next();
 }
 
-// Liveness check for uptime monitoring — no auth, no side effects
-app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+// Health check — verifies Firestore is reachable. Used by Cloud Monitoring uptime check.
+app.get('/health', async (req, res) => {
+  try {
+    await getGarageConfig(); // lightweight Firestore read
+    res.status(200).json({ status: 'ok', ts: new Date().toISOString() });
+  } catch (err) {
+    console.error('Health check failed:', err);
+    res.status(500).json({ status: 'error', error: err.message });
+  }
+});
+
+// Synthetic monitor — called by Cloud Scheduler every 30 min. Tests Claude + Firestore.
+// Uses Haiku (cheapest model) with track:false so it doesn't pollute billing.
+app.get('/health/synthetic', async (req, res) => {
+  const results = { claude: 'untested', firestore: 'untested' };
+  try {
+    const reply = await askClaude(
+      [{ role: 'user', content: 'Reply with exactly the word PONG and nothing else.' }],
+      'You are a test assistant. Follow instructions exactly.',
+      'claude-haiku-4-5-20251001',
+      { track: false },
+    );
+    results.claude = reply.trim().toUpperCase().includes('PONG') ? 'ok' : `unexpected: ${reply.slice(0, 50)}`;
+  } catch (err) {
+    results.claude = `error: ${err.message}`;
+  }
+
+  try {
+    await getGarageConfig();
+    results.firestore = 'ok';
+  } catch (err) {
+    results.firestore = `error: ${err.message}`;
+  }
+
+  const allOk = Object.values(results).every(v => v === 'ok');
+  if (!allOk) console.error('Synthetic health check failed:', results);
+  res.status(allOk ? 200 : 500).json({ status: allOk ? 'ok' : 'degraded', ...results, ts: new Date().toISOString() });
+});
 
 // Inbox web app
 app.use('/inbox', express.static(path.join(__dirname, 'web')));
