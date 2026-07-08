@@ -178,7 +178,7 @@ function buildSystemPrompt(customer, { open, nextOpen }, awayUntil = null) {
 
   const escalationInstructions = open
     ? `The garage is currently open. If the customer is frustrated, the query is too complex, they ask to speak to Ian directly, or you genuinely can't help — include [ESCALATE] at the end of your reply and let them know Ian will be in touch shortly. Only use [ESCALATE] once per conversation — if it's already appeared in a previous reply, Ian has been notified and you should continue helping without using it again.`
-    : `The garage is currently closed. Do not use [ESCALATE] — Ian is not monitoring messages in real time. Take the details, reassure the customer their message is noted, and tell them Ian will be in touch when he's next in.`;
+    : `The garage is currently closed and reopens ${nextOpen}. Do not use [ESCALATE] — Ian is not monitoring messages in real time. Take the details, reassure the customer their message is noted, and let them know the garage reopens ${nextOpen}. Stating that reopening time is fine — it's just the garage's normal hours — but don't promise Ian will personally reply at that exact moment, since he may not see it the second he's back. If the situation is genuinely urgent and they can't wait (a breakdown, a safety issue), still point them to message or call Ian directly, or suggest their breakdown provider (RAC/AA) if they need help sooner than that.`;
 
   let prompt = PROMPT_TEMPLATE
     .replaceAll('{garageName}', garageName)
