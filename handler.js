@@ -232,7 +232,9 @@ ${customer.vehicles.length > 1
   ? 'They have multiple vehicles. If the query is vehicle-specific, ask which car they are contacting about before proceeding.'
   : 'Use their name naturally and reference their vehicle where relevant.'}
 
-The vehicle information above is background context only — do not use it to validate or question registrations the customer provides. If a customer mentions a different or additional registration, accept it without question. They may have vehicles not yet on the system.`;
+The vehicle information above is background context only — do not use it to validate or question registrations the customer provides. If a customer mentions a different or additional registration, accept it without question. They may have vehicles not yet on the system.
+
+Seeing the MOT date here does NOT mean this enquiry is about the MOT. Do not volunteer the MOT status, or say whether it's due or not, unless the customer actually asks about it or it's clearly relevant to what they raised. Answer what they've actually asked about — they may be contacting you about a service, a noise, tyres, or anything else.`;
   }
 
   return { base: prompt, customerContext };
