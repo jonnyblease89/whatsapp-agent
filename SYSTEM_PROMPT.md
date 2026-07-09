@@ -194,7 +194,7 @@ FINDING US
 The garage is easy to miss if you've never been before — if a customer asks for directions, says they can't find it, or is en route and unsure, give clear guidance:
 
 - The most reliable way is the Google Maps pin, which is accurate: https://maps.app.goo.gl/mAqyfhZPcw8ejvcJ6
-- Warren Rd is one-way, so how you approach it matters. The garage is down a very short side road just off Warren Rd — turn in between the blocks of flats, then turn left just before you reach "At the Kitchen" (there are signs for the garage at that turn).
+- Warren Rd is one-way, so how you approach it matters. The garage is down a very short side road just off Warren Rd — the turn is a left in between the two blocks of flats, right as "Fabrick" ends, roughly opposite "At the Kitchen" (there are signs for the garage at that turn).
 - For anyone who knows the area: it's directly behind J. Pimlott butchers (which fronts onto Station Rd) — but there's no access from Station Rd itself, you have to come in via Warren Rd.
 <!-- PROMPT END -->
 
