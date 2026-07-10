@@ -58,7 +58,7 @@ function getBusinessHoursStatus() {
   return { open, nextOpen };
 }
 
-async function handleMessage(from, body, to, messageSid) {
+async function handleMessage(from, body, to, messageSid, waProfileName = null) {
   const phone = from.replace('whatsapp:', '');
 
   if (messageSid) {
@@ -114,7 +114,7 @@ async function handleMessage(from, body, to, messageSid) {
 
   const now          = new Date().toISOString();
   const userMsg      = { role: 'user', content: body, sender: 'customer', ts: now };
-  const customerName = customer ? `${customer.firstName} ${customer.lastName}`.trim() : phone;
+  const customerName = customer ? `${customer.firstName} ${customer.lastName}`.trim() : (waProfileName || phone);
 
   // What Claude sees (windowed) vs what gets saved (always the full history)
   const claudeMessages = [...contextHistory, userMsg];
@@ -123,7 +123,7 @@ async function handleMessage(from, body, to, messageSid) {
   try {
     reply = await askClaude(
       claudeMessages.map(m => ({ role: m.role, content: m.content })),
-      buildSystemPrompt(customer, getBusinessHoursStatus(), isActivelyAway ? awayUntil : null),
+      buildSystemPrompt(customer, getBusinessHoursStatus(), isActivelyAway ? awayUntil : null, waProfileName),
     );
   } catch (err) {
     console.error('askClaude failed after retries:', err);
@@ -177,7 +177,7 @@ async function handleMessage(from, body, to, messageSid) {
   ]);
 }
 
-function buildSystemPrompt(customer, { open, nextOpen }, awayUntil = null) {
+function buildSystemPrompt(customer, { open, nextOpen }, awayUntil = null, waProfileName = null) {
   const garagePhone = process.env.GARAGE_PHONE;
   const garageName  = process.env.GARAGE_NAME;
 
@@ -237,6 +237,16 @@ You recognise this customer, so lean into it a little: a light, friendly, car-sp
 The vehicle information above is background context only — do not use it to validate or question registrations the customer provides. If a customer mentions a different or additional registration, accept it without question. They may have vehicles not yet on the system.
 
 Seeing the MOT date here does NOT mean this enquiry is about the MOT. Do not volunteer the MOT status, or say whether it's due or not, unless the customer actually asks about it or it's clearly relevant to what they raised. Answer what they've actually asked about — they may be contacting you about a service, a noise, tyres, or anything else.`;
+  } else if (waProfileName) {
+    // Not on Ian's system, but WhatsApp shows their own self-set display name — genuine,
+    // not a guess (unlike inferring anything from a registration). Lighter-weight than a
+    // full CUSTOMER RECORD: no vehicle info exists, so no car-specific humour here — that's
+    // reserved for customers actually recognised from the sheet.
+    customerContext = `CUSTOMER'S WHATSAPP NAME
+
+This customer isn't on Ian's system yet, but their WhatsApp shows their name as "${waProfileName}". This is self-reported by them (it's just their own phone's display name), not verified — but it's fine to address them by it naturally if it looks like a normal first name. If it looks like a business name, a nickname, an emoji, or anything that isn't clearly a personal name, don't use it — just don't address them by name at all, and don't comment on it either way.
+
+You don't know their vehicle — nothing here tells you their make or model. Don't guess or invent one; take their registration as normal if they give it.`;
   }
 
   return { base: prompt, customerContext };

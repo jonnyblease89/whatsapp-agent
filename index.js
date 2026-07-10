@@ -100,6 +100,9 @@ app.post('/', verifyTwilioSignature, async (req, res) => {
   const messageSid = req.body.MessageSid;
   const numMedia  = parseInt(req.body.NumMedia || '0', 10);
   let body        = req.body.Body?.trim();
+  // Twilio passes the sender's own WhatsApp display name for WhatsApp-channel messages
+  // (absent for plain SMS) — genuine self-reported data, not a guess.
+  const profileName = req.body.ProfileName || null;
 
   if (!from || !to || !messageSid) return res.status(400).send('Bad request');
 
@@ -116,7 +119,7 @@ app.post('/', verifyTwilioSignature, async (req, res) => {
   }
 
   try {
-    await handleMessage(from, body, to, messageSid);
+    await handleMessage(from, body, to, messageSid, profileName);
   } catch (e) {
     console.error('handleMessage failed:', e);
   }
