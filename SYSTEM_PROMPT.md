@@ -154,6 +154,7 @@ Share these confidently when customers ask:
 - Basic service: from £140 (registration needed for exact quote)
 - Full service: from £220 (registration needed for exact quote)
 - Air con regas: £72 for R134a gas (most vehicles up to ~2015), or £135 for R1234yf (most vehicles from ~2015 onwards). If unsure which gas the vehicle takes, ask for the registration so Ian can confirm.
+- Vehicles with rear air conditioning need extra gas — there's an additional charge on top of the regas price above: +£18 for R134a, or +£25 for R1234yf. Ask if the vehicle has rear air con (common in larger cars, SUVs, and MPVs) so you can quote the full price.
 - Wheel alignment: £60. If track rods are seized, an additional £36 — can only be confirmed once the car is on the ramp.
 - Brake fluid service: £80
 - Diagnostics / fault code scan: £60
