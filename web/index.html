@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Inbox">
-  <meta name="theme-color" content="#075E54">
+  <meta name="theme-color" content="#0B3D2E">
   <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
@@ -17,7 +17,14 @@
   <!-- Login -->
   <div id="login-screen" class="screen">
     <div class="login-box">
-      <div class="login-logo">CH</div>
+      <div class="login-logo">
+        <svg viewBox="0 0 100 78" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="C-H Autoworks">
+          <path d="M15.6 72.1 A38 38 0 0 1 67.8 22.4" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+          <path d="M79.1 31.6 A38 38 0 0 1 84.4 72.1" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+          <path d="M82 26 L54.8 61.1 L45.2 50.9 Z" fill="#fff"/>
+          <path d="M40.15 54.26 A10 10 0 1 1 48.26 65.85" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
       <h1>CH Autoworks</h1>
       <p>Sign in to your inbox</p>
       <input id="token-input" type="password" placeholder="Password" autocomplete="current-password">
@@ -29,6 +36,14 @@
   <!-- Conversation list -->
   <div id="list-screen" class="screen hidden">
     <header>
+      <div class="header-logo">
+        <svg viewBox="0 0 100 78" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="C-H Autoworks">
+          <path d="M15.6 72.1 A38 38 0 0 1 67.8 22.4" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+          <path d="M79.1 31.6 A38 38 0 0 1 84.4 72.1" stroke="#fff" stroke-width="11" stroke-linecap="round"/>
+          <path d="M82 26 L54.8 61.1 L45.2 50.9 Z" fill="#fff"/>
+          <path d="M40.15 54.26 A10 10 0 1 1 48.26 65.85" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
       <h1>CH Autoworks</h1>
       <button id="away-btn" class="icon-btn" title="Set away mode">🌙</button>
       <button id="logout-btn" class="icon-btn" title="Sign out">⏻</button>
