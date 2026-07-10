@@ -57,6 +57,8 @@ header h1 { font-size: 17px; font-weight: 600; flex: 1; }
   flex-shrink: 0;
 }
 .icon-btn:hover { background: rgba(255,255,255,.15); }
+.delete-btn { font-size: 17px; }
+.delete-btn:hover { background: rgba(198,40,40,.35); }
 
 /* ── Login ── */
 #login-screen {

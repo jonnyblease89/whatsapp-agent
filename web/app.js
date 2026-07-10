@@ -341,6 +341,8 @@ document.getElementById('resolve-btn').addEventListener('click', () => {
   setResolved(resolving);
 });
 
+document.getElementById('delete-btn').addEventListener('click', deleteConversation);
+
 document.getElementById('send-btn').addEventListener('click', sendReply);
 document.getElementById('reply-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
@@ -360,6 +362,26 @@ async function sendReply() {
   input.style.height = 'auto';
   await api('POST', '/reply', { phone: currentPhone, message });
   await refreshChat();
+}
+
+async function deleteConversation() {
+  const conv = allConvs.find(c => c.phone === currentPhone);
+  const name = conv?.customerName || currentPhone;
+  if (!confirm(`Delete the conversation with ${name}? This permanently deletes the whole message history and can't be undone.`)) return;
+
+  const btn = document.getElementById('delete-btn');
+  btn.disabled = true;
+  const ok = await api('DELETE', `/conversations/${encodeURIComponent(currentPhone)}`);
+  btn.disabled = false;
+  if (!ok) { alert('Delete failed — please try again.'); return; }
+
+  currentPhone = null;
+  stopPoll();
+  show('list-screen');
+  startListPoll();
+  loadSummary();
+  const data = await api('GET', '/conversations');
+  if (data) { allConvs = data; renderList(); }
 }
 
 async function takeover() {

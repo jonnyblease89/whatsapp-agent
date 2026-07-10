@@ -8,7 +8,7 @@ const { lookupCustomer } = require('./sheets');
 const { sendDailySummary } = require('./summary');
 const { saveSubscription } = require('./push');
 const { askClaude }        = require('./claude');
-const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig, getUsage } = require('./store');
+const { getConversations, getConversation, setStatus, setResolved, appendIanMessage, markRead, getGarageConfig, setGarageConfig, getUsage, clearHistory } = require('./store');
 const { sendMessage }                                         = require('./twilio');
 const { verifyTwilioSignature }                                = require('./security');
 const { isRateLimited }                                        = require('./rateLimit');
@@ -190,10 +190,23 @@ app.get('/conversations/:phone', auth, async (req, res) => {
   res.json(conv);
 });
 
+// Inbox: permanently delete a conversation (test chats, spam, a customer's own request)
+app.delete('/conversations/:phone', auth, async (req, res) => {
+  const phone = decodeURIComponent(req.params.phone);
+  await clearHistory(phone);
+  res.json({ ok: true });
+});
+
 // Inbox: Ian sends a reply
 app.post('/reply', auth, async (req, res) => {
   const { phone, message } = req.body;
   if (!phone || !message) return res.status(400).json({ error: 'phone and message required' });
+  // Firestore is shared with the coexistence fork's web-chat pilot, so a "web:"-prefixed
+  // conversation can appear here even though this function has no transport to reach it —
+  // it isn't a real phone number, so refuse rather than attempt a broken Twilio send.
+  if (!phone.startsWith('+')) {
+    return res.status(409).json({ error: 'This conversation has no reply channel from here (web chat) — nothing was sent.' });
+  }
   const conv = await getConversation(phone);
   const twilioFrom = conv?.twilioNumber || `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
   const isWhatsApp = twilioFrom.startsWith('whatsapp:');
