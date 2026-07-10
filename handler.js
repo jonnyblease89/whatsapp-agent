@@ -21,7 +21,7 @@ const RESET_PHRASES = ['reset', 'start over', 'restart'];
 const MAX_HISTORY   = 200;
 
 // Inactivity thresholds for conversation state resets
-const HUMAN_GRACE_HOURS      = 8;   // keep bot silent for active human takeovers within this window
+const HUMAN_GRACE_HOURS      = 24;  // cool-off period: keep bot silent for this long after Ian personally responds
 const NEW_CONVERSATION_HOURS = 24;  // trim context sent to Claude after this gap
 const FRESH_START_HOURS      = 168; // 7 days — pass no history to Claude at all
 
@@ -231,6 +231,8 @@ This customer is already on the system:
 ${customer.vehicles.length > 1
   ? 'They have multiple vehicles. If the query is vehicle-specific, ask which car they are contacting about before proceeding.'
   : 'Use their name naturally and reference their vehicle where relevant.'}
+
+You recognise this customer, so lean into it a little: a light, friendly, car-specific touch of humour (a cheeky aside about their make/model, a knowing nod to owning that particular car) lands well here — more warmth than a first-time stranger gets. Keep it affectionate, never mocking, and don't force it into every single reply; once it's landed naturally in the conversation, move on.
 
 The vehicle information above is background context only — do not use it to validate or question registrations the customer provides. If a customer mentions a different or additional registration, accept it without question. They may have vehicles not yet on the system.
 
